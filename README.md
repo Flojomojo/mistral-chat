@@ -11,13 +11,18 @@ A simple chatbot for the mistralai api.
 
 ### Install via
 ```bash
+git clone https://github.com/Flojomojo/mistral-chat.git
+cd mistral-chat
 pip3 -r requirements.txt
 ```
+
+Now either set the environment variable MISTRAL_API_KEY or use the --api-key {key} flag
 
 ### Run via
 ```bash
 python3 chat.py
 ```
+
 
 # Features
 - Switching models mid chat
