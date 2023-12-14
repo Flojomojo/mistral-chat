@@ -7,8 +7,8 @@ A simple chatbot for the mistralai api.
 - Mistral Api Key
 - python3
 
-Install via
-```
+### Install via
+```bash
 pip3 -r requirements.txt
 ```
 
