@@ -8,6 +8,9 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.status import Status
+import pyperclip
+import re
+import hashlib
 
 from mistralai.client import MistralClient
 from mistralai.models.chat_completion import ChatMessage
@@ -27,7 +30,9 @@ COMMANDS = [
     "/help",
     "/quit",
     "/model",
-    "/new"
+    "/new",
+    "/copy",
+    "/ccopy"
 ]
 
 CONSOLE = Console()
@@ -39,6 +44,68 @@ STATUS = Status("Generating answers...", spinner="bouncingBall")
 LOG_FORMAT = "%(asctime)s - %(levelname)s - %(message)s"
 
 logger = logging.getLogger("chatbot")
+
+class CodeBlock:
+    tag = ""
+    raw_code = ""
+    code = ""
+    identifier = ""
+    
+    def __init__(self, code: str):
+        """
+        A class for storing code codeblocks
+        code (str): The actual code, including the ```
+        """
+        self.raw_code = code
+        self.tag, self.code = self._extract_code(self.raw_code)
+        self.identifier = self._generate_small_hash(self.raw_code)
+
+
+    def _extract_code(self, input_string):
+        """
+        Extracts the tag and the code of a given block
+
+        Returns:
+            tag(str), code content(str)
+        """
+        pattern = r'```(\w*)([\s\S]*?)\s*```'
+        match = re.search(pattern, input_string)
+
+        if match:
+            tag = match.group(1).strip()
+            code_content = match.group(2).strip()
+            return tag, code_content
+        else:
+            return None, None
+        
+    def _generate_small_hash(self, data):
+        """Generates a small hash from a string"""
+        sha256_hash = hashlib.sha256()
+        sha256_hash.update(data.encode('utf-8'))
+        small_hash = sha256_hash.hexdigest()[:8]  
+        return small_hash
+
+    @staticmethod
+    def parse_code_blocks(message: str) -> list:
+        """
+        Parses the give message to code CodeBlocks
+
+        Args:
+            message(str): The message to parse the code blocks from
+
+        Returns:
+            A list of parsed code blocks
+        """
+        pattern = r'```(?:\w+\s*)?\n([\s\S]*?)\s*```'
+        matches = re.finditer(pattern, message)
+
+        code_blocks = []
+        for match in matches:
+            text = match.group()
+            code_blocks.append(CodeBlock(text))
+
+        return code_blocks
+        
 
 
 class ChatBot:
@@ -55,6 +122,7 @@ class ChatBot:
         self.system_message = system_message
         self.streamed = streamed
         self.first_chat = True
+        self.code_blocks = []
 
     def print_help(self):
         """
@@ -66,6 +134,8 @@ To start a new chat: type /new
 To exit: /quit
 To show this help: /help
 To switch models: /model {model_name}
+Copy the last answer to your clipboard: /copy
+Copy a code block via a tag (always in the top right of the code): /ccopy <code block tag>
 """
         help_panel = Panel(help_message, subtitle="/help", title="Help", border_style="purple")
         CONSOLE.print(help_panel)
@@ -128,7 +198,26 @@ To switch models: /model {model_name}
             return
         self.model = model_name
         print(f"Successfully switched to model {model_name}")
-        
+
+
+    def copy_last_message(self):
+        """Copies the last message to the clipboard"""
+        if len(self.messages) == 0:
+            print("No messages yet")
+            return
+        last_message = self.messages[-1].content
+        pyperclip.copy(last_message)
+
+    def copy_code(self, args):
+        if len(args) < 1:
+            print("No identifier specified")
+        identifier = args[0]
+        for block in self.code_blocks:
+            if block.identifier == identifier:
+                pyperclip.copy(block.code)
+                print(f"Copied {identifier}")
+                return
+
 
     def handle_command(self, command, args):
         """
@@ -146,6 +235,20 @@ To switch models: /model {model_name}
                 self.print_help()
             case "/model":
                 self.switch_model(args)
+            case "/copy":
+                self.copy_last_message()
+            case "/ccopy":
+                self.copy_code(args)
+
+    def inject_code_blocks(self, code_blocks: list[CodeBlock], message: str) -> str:
+        # Find the first newline
+        new_message = message
+        for block in code_blocks:
+            raw_code_block_code = block.raw_code
+            # Just prepend the identifier so it is on the line before
+            new_code = f"`{block.identifier}`\n" + raw_code_block_code
+            new_message = new_message.replace(raw_code_block_code, new_code)
+        return new_message
 
     def run_inference(self, content):
         """
@@ -169,8 +272,7 @@ To switch models: /model {model_name}
                 # If not streamed add it to the end string that will be printed out
                 if self.streamed:
                     print(response, end="", flush=True)
-                else:
-                    answer += response
+                answer += response
         
         # We are done so stop the loading
         if not args.streamed:
@@ -178,15 +280,30 @@ To switch models: /model {model_name}
 
         # We havent printed out the result so do it here
         if not self.streamed:
-            markdown = Markdown(answer)
+            # Parse the code blocks and inject the code block identifier
+            parsed_blocks = CodeBlock.parse_code_blocks(answer)
+            self.code_blocks += parsed_blocks
+            modified_answer = self.inject_code_blocks(parsed_blocks, answer)
+            markdown = Markdown(modified_answer)
             panel = Panel(markdown, title="Mistral", border_style="bold blue")
             CONSOLE.print(panel)
         else:
             print("", flush=True)
 
+
         if assistant_response:
             self.messages.append(ChatMessage(role="assistant", content=assistant_response))
         logger.debug(f"Current messages: {self.messages}")
+
+    def get_input(self, prompt: str):
+        lines = [] 
+        try:
+            while True:
+                lines.append(input(prompt))
+        except EOFError:
+            pass
+        return "\n".join(lines)
+
 
     def start(self):
         self.print_help()
