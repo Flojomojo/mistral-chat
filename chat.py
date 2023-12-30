@@ -246,7 +246,7 @@ Copy a code block via a tag (always in the top right of the code): /ccopy <code 
         for block in code_blocks:
             raw_code_block_code = block.raw_code
             # Just prepend the identifier so it is on the line before
-            new_code = f"`{block.identifier}`\n" + raw_code_block_code
+            new_code = f"\n`{block.identifier}`\n" + raw_code_block_code
             new_message = new_message.replace(raw_code_block_code, new_code)
         return new_message
 
