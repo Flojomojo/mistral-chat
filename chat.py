@@ -135,7 +135,7 @@ To exit: /quit
 To show this help: /help
 To switch models: /model {model_name}
 Copy the last answer to your clipboard: /copy
-Copy a code block via a tag (always in the top right of the code): /ccopy <code block tag>
+Copy a code block via a tag (always above the codeblock): /ccopy <code block tag>
 """
         help_panel = Panel(help_message, subtitle="/help", title="Help", border_style="purple")
         CONSOLE.print(help_panel)
